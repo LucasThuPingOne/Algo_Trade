@@ -12,10 +12,12 @@ start_date = datetime(2023, 12, 31) - timedelta(days=2 * 365)
 # Paramètres des fenêtres
 sma_window = 26
 sma_20_window = 20
-rsi_window = 30
+rsi_window = 16
 so_window = 6
 volatility_window = 20
 trend_window = 4
+ema_short_window = 5
+ema_long_window = 10
 
 rsi_high = 75
 rsi_low = 40
@@ -65,11 +67,16 @@ def sma_trend(SMA, window):
     slope, _, _, _, _ = linregress(x, recent_sma)
     return slope
 
+def EMA(previous_ema, price, window):
+    multiplier = 2 / (window + 1)
+    return price * multiplier + previous_ema * (1 - multiplier)
+    
+
 # Charger les données
 df = read_excel(file_path, ticker, start_date)
 
 # Initialisation des variables
-time, close, pnl, SMA, RSI, vol, vola, SMA_20, ret, SO = [], [], [], [], [], [], [], [], [], []
+time, close, pnl, SMA, RSI, vol, vola, SMA_20, ret, SO , EMA_short, EMA_long = [], [], [], [], [], [], [], [], [], [], [], []
 buy_time, buy_signal, sell_time, sell_signal = [], [], [], []
 Upper_band, Lower_band = [], []
 position = 0
@@ -100,6 +107,23 @@ for _, row in df.iterrows():
     rsi = calculate_rsi(close, rsi_window)
     vola.append(calculate_volatility(close, volatility_window))
     SO.append(calculate_stochastic_oscillator(close, so_window))
+    
+    if len(close) == ema_short_window:
+        EMA_short.append(calculate_sma(close, ema_short_window))
+    elif len(close) < ema_short_window:
+        EMA_short.append(None)
+    else:
+        EMA_short.append(EMA(EMA_short[-1], price, ema_short_window))
+    
+    
+    if len(close) == ema_long_window:
+        EMA_long.append(calculate_sma(close, ema_long_window))
+    elif len(close) < ema_long_window:
+        EMA_long.append(None)
+    else:
+        EMA_long.append(EMA(EMA_long[-1], price, ema_long_window))
+        
+    
 
     SMA.append(sma)
     RSI.append(rsi)
@@ -112,11 +136,11 @@ for _, row in df.iterrows():
         Lower_band.append(np.nan)
 
     # Logique de trading
-    if len(SMA) > sma_window + trend_window + 1 and len(SO) > so_window:
-        slope = sma_trend(SMA, window=trend_window)
+    if len(EMA_short) > ema_long_window and len(EMA_long) > ema_short_window and rsi is not None:
+        # slope = sma_trend(SMA, window=trend_window)
 
         # Achat
-        if position == 0 and (slope < 0) and (price > sma):
+        if position == 0 and (EMA_short[-1] > EMA_long[-1] and rsi < rsi_low):
             position = 1
             buy_price = price
             max_price = price
@@ -126,7 +150,7 @@ for _, row in df.iterrows():
             print(f"BUY: {date} | Price: {price:.2f}")
 
         # Vente
-        elif position == 1 and (slope > 0) and (price < sma):
+        elif position == 1 and ((EMA_short[-1] < EMA_long[-1] and rsi > rsi_high) or price < 0.95 * max_price): 
             position = 0
             sell_time.append(date)
             sell_signal.append(price)
@@ -147,20 +171,30 @@ for _, row in df.iterrows():
 
     pnl.append(PnL)
 
+# Vérification si une position est ouverte à la fin
+if position == 1:
+    total_sell_price += price  # On clôture la position au dernier prix
+    trade_pnl = price - buy_price
+    nb_trade += 1
+    print(f"CLOSING OPEN POSITION: {date} | Closing Price: {price:.2f} | Trade PnL: ${trade_pnl:.2f} | Cumulative PnL: ${cumulative_pnl:.2f}")
+
 # Résultats finaux
-total_return = (total_sell_price - total_buy_price) / total_buy_price * 100
-print(f"Total buy price = {total_buy_price} | Total sell price = {total_sell_price} | Return = {total_return}% | Number of trades = {nb_trade}")
+if total_buy_price == 0:
+    print('No position has been taken')
+else:
+    total_return = (total_sell_price - total_buy_price) / total_buy_price * 100
+    print(f"Total buy price = {total_buy_price} | Total sell price = {total_sell_price} | Return = {total_return}% | Number of trades = {nb_trade}")
 
 # Graphiques
-fig, axes = plt.subplots(3, 1, figsize=(14, 7))
+fig, axes = plt.subplots(2,1, figsize=(14, 7))
 axes[0].scatter(buy_time, buy_signal, marker='^', color='green', label='Buy Signal', s=100)
 axes[0].scatter(sell_time, sell_signal, marker='v', color='red', label='Sell Signal', s=100)
 axes[0].plot(time, close, label='Close price')
-axes[0].plot(time, SMA, label='SMA')
-axes[0].plot(time, SMA_20, label='SMA 20')
-axes[0].plot(time, Upper_band, label='Upper band', linestyle='--', color='#00004d')
-axes[0].plot(time, Lower_band, label='Lower band', linestyle='--', color='#00004d')
-axes[0].fill_between(time, Upper_band, Lower_band, color='gray', alpha=0.3)
+axes[0].plot(time, EMA_short, label='EMA short')
+axes[0].plot(time, EMA_long, label='EMA long')
+# plt.plot(time, Upper_band, label='Upper band', linestyle='--', color='#00004d')
+# plt.plot(time, Lower_band, label='Lower band', linestyle='--', color='#00004d')
+# plt.fill_between(time, Upper_band, Lower_band, color='gray', alpha=0.3)
 axes[0].set_title("Close price with Buy/Sell Signals")
 axes[0].legend(loc='upper left')
 
@@ -170,11 +204,11 @@ axes[1].axhline(y=rsi_high, color='g', linestyle='--', label='RSI High')
 axes[1].set_title('RSI')
 axes[1].legend(loc='upper left')
 
-axes[2].plot(time, SO, label='SO')
-axes[2].axhline(y=20, color='r', linestyle='--', label='SO Low')
-axes[2].axhline(y=80, color='g', linestyle='--', label='SO High')
-axes[2].set_title('Stochastic Oscillator')
-axes[2].legend(loc='upper left')
+# axes[2].plot(time, SO, label='SO')
+# axes[2].axhline(y=20, color='r', linestyle='--', label='SO Low')
+# axes[2].axhline(y=80, color='g', linestyle='--', label='SO High')
+# axes[2].set_title('Stochastic Oscillator')
+# axes[2].legend(loc='upper left')
 
 plt.tight_layout()
 plt.show()
