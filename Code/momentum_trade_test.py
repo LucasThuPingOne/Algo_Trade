@@ -6,7 +6,7 @@ from scipy.stats import linregress
 
 # Paramètres d'initialisation
 ticker = "AAPL"
-file_path = "data/resultat_s&p500_trie.xlsx"
+file_path = "../data/resultat_s&p500_trie.xlsx"
 start_date = datetime(2023, 12, 31) - timedelta(days=2 * 365)
 
 # Paramètres des fenêtres

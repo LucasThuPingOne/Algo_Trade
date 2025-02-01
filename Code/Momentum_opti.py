@@ -101,7 +101,7 @@ def grid_search(file_path, ticker, start_date, sma_range, so_range, window_sma_t
     return results
 
 # Paramètres
-file_path = "data/resultat_s&p500_trie.xlsx"
+file_path = "../data/resultat_s&p500_trie.xlsx"
 ticker = "AAPL"
 start_date = datetime(2023, 12, 31) - timedelta(days=2 * 365)
 sma_range = range(5, 31, 1)  # Fenêtres pour SMA

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import time
 
 # Paramètres d'initialisation
-fichier_csv = "data/flux_financier.csv"
+fichier_csv = "../data/flux_financier.csv"
 start_date = datetime(2023, 12, 31) - timedelta(days=2 * 365)
 
 # Calcul des indicateurs techniques
