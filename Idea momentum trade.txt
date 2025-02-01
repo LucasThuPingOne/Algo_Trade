@@ -1,0 +1,10 @@
+Indicators:
+- Moving Averages (MA): SMA, EMA
+- RSI
+- MACD
+- Bollinger Bands
+- Stochastic Oscillator
+- Volume Weighted Average Price (VWAP)
+- Fibonacci Retracement
+
+https://www.utradealgos.com/blog/what-are-the-best-indicators-for-algo-trading-and-how-to-use-them-effectively

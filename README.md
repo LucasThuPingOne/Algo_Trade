@@ -1,2 +1,2 @@
-# Algo_Trade
-Algo trade based on momentum
+# Cash-Machine
+Super projet de Cash Machine Securities
