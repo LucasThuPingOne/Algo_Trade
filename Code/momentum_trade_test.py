@@ -12,12 +12,13 @@ start_date = datetime(2023, 12, 31) - timedelta(days=2 * 365)
 # Paramètres des fenêtres
 sma_window = 26
 sma_20_window = 20
-rsi_window = 16
+rsi_window = 13
 so_window = 6
 volatility_window = 20
 trend_window = 4
 ema_short_window = 5
-ema_long_window = 10
+ema_long_window = 23
+signal_line_window=13
 
 rsi_high = 75
 rsi_low = 40
@@ -70,15 +71,34 @@ def sma_trend(SMA, window):
 def EMA(previous_ema, price, window):
     multiplier = 2 / (window + 1)
     return price * multiplier + previous_ema * (1 - multiplier)
+
+def calculate_MACD(EMA_short, EMA_long):
+    MACD = EMA_short[-1] - EMA_long[-1]
+    return MACD
+
+def calculate_signal_line(MACD, signal_line, window):
+    return EMA(signal_line[-1], MACD, window)
+
+def calculate_MACD_histogram(MACD, signal_line):
+    if MACD[-1] is None or signal_line[-1] is None:
+        return 0
+    return MACD[-1] - signal_line[-1]
     
 
 # Charger les données
 df = read_excel(file_path, ticker, start_date)
 
 # Initialisation des variables
-time, close, pnl, SMA, RSI, vol, vola, SMA_20, ret, SO , EMA_short, EMA_long = [], [], [], [], [], [], [], [], [], [], [], []
+time, close, pnl, vol, vola, ret = [], [], [], [], [], []
+# SMA, SMA_20 = [], []
+RSI = []
+# SO = []
+# Upper_band, Lower_band = [], []
+EMA_short, EMA_long = [], []
+MACD, signal_line, MACD_histogram = [], [], []
+
 buy_time, buy_signal, sell_time, sell_signal = [], [], [], []
-Upper_band, Lower_band = [], []
+
 position = 0
 PnL = 0
 cumulative_pnl = 0
@@ -100,13 +120,14 @@ for _, row in df.iterrows():
     close.append(price)
     vol.append(volume)
     ret.append(retu)
+    # vola.append(calculate_volatility(close, volatility_window))
 
     # Calcul des indicateurs si assez de données
-    sma = calculate_sma(close, sma_window)
-    SMA_20.append(calculate_sma(close, sma_20_window))
+    # sma = calculate_sma(close, sma_window)
+    # SMA_20.append(calculate_sma(close, sma_20_window))
     rsi = calculate_rsi(close, rsi_window)
-    vola.append(calculate_volatility(close, volatility_window))
-    SO.append(calculate_stochastic_oscillator(close, so_window))
+    
+    # SO.append(calculate_stochastic_oscillator(close, so_window))
     
     if len(close) == ema_short_window:
         EMA_short.append(calculate_sma(close, ema_short_window))
@@ -118,29 +139,39 @@ for _, row in df.iterrows():
     
     if len(close) == ema_long_window:
         EMA_long.append(calculate_sma(close, ema_long_window))
+        MACD.append(calculate_MACD(EMA_short, EMA_long))
+        signal_line.append(MACD[-1])
     elif len(close) < ema_long_window:
         EMA_long.append(None)
+        MACD.append(None)
+        signal_line.append(None)   
     else:
         EMA_long.append(EMA(EMA_long[-1], price, ema_long_window))
+        MACD.append(calculate_MACD(EMA_short, EMA_long))
+        signal_line.append(calculate_signal_line(MACD[-1], signal_line, signal_line_window))
         
     
+    
+    MACD_histogram.append(calculate_MACD_histogram(MACD, signal_line))
 
-    SMA.append(sma)
+
+    # SMA.append(sma)
     RSI.append(rsi)
 
-    if SMA_20[-1] is not None and vola[-1] is not None:
-        Upper_band.append(SMA_20[-1] + 2 * vola[-1])
-        Lower_band.append(SMA_20[-1] - 2 * vola[-1])
-    else:
-        Upper_band.append(np.nan)
-        Lower_band.append(np.nan)
+    # Bollinger Bands
+    # if SMA_20[-1] is not None and vola[-1] is not None:
+    #     Upper_band.append(SMA_20[-1] + 2 * vola[-1])
+    #     Lower_band.append(SMA_20[-1] - 2 * vola[-1])
+    # else:
+    #     Upper_band.append(np.nan)
+    #     Lower_band.append(np.nan)
 
     # Logique de trading
     if len(EMA_short) > ema_long_window and len(EMA_long) > ema_short_window and rsi is not None:
         # slope = sma_trend(SMA, window=trend_window)
 
         # Achat
-        if position == 0 and (EMA_short[-1] > EMA_long[-1] and rsi < rsi_low):
+        if position == 0 and (MACD[-1] > signal_line[-1] and rsi < rsi_low):
             position = 1
             buy_price = price
             max_price = price
@@ -150,7 +181,7 @@ for _, row in df.iterrows():
             print(f"BUY: {date} | Price: {price:.2f}")
 
         # Vente
-        elif position == 1 and ((EMA_short[-1] < EMA_long[-1] and rsi > rsi_high) or price < 0.95 * max_price): 
+        elif position == 1 and ((MACD[-1] < signal_line[-1] and rsi > rsi_high) ): 
             position = 0
             sell_time.append(date)
             sell_signal.append(price)
@@ -176,6 +207,7 @@ if position == 1:
     total_sell_price += price  # On clôture la position au dernier prix
     trade_pnl = price - buy_price
     nb_trade += 1
+    cumulative_pnl += trade_pnl
     print(f"CLOSING OPEN POSITION: {date} | Closing Price: {price:.2f} | Trade PnL: ${trade_pnl:.2f} | Cumulative PnL: ${cumulative_pnl:.2f}")
 
 # Résultats finaux
@@ -183,7 +215,7 @@ if total_buy_price == 0:
     print('No position has been taken')
 else:
     total_return = (total_sell_price - total_buy_price) / total_buy_price * 100
-    print(f"Total buy price = {total_buy_price} | Total sell price = {total_sell_price} | Return = {total_return}% | Number of trades = {nb_trade}")
+    print(f"Total buy price = {total_buy_price} | Total sell price = {total_sell_price} | Return = {total_return}% | Number of trades = {nb_trade} | Underlying return = {((close[-1] - close[0])  / close[0]) * 100}%")
 
 # Graphiques
 fig, axes = plt.subplots(2,1, figsize=(14, 7))
@@ -198,9 +230,10 @@ axes[0].plot(time, EMA_long, label='EMA long')
 axes[0].set_title("Close price with Buy/Sell Signals")
 axes[0].legend(loc='upper left')
 
-axes[1].plot(time, RSI, label='RSI')
-axes[1].axhline(y=rsi_low, color='r', linestyle='--', label='RSI Low')
-axes[1].axhline(y=rsi_high, color='g', linestyle='--', label='RSI High')
+axes[1].plot(time, MACD, label='MACD')
+axes[1].plot(time, signal_line, label='Signal Line')
+colors = np.where(np.array(MACD_histogram) >= 0, 'green', 'red')
+axes[1].bar(time, MACD_histogram, label='MACD Histogram', color=colors)
 axes[1].set_title('RSI')
 axes[1].legend(loc='upper left')
 
