@@ -1,5 +1,5 @@
 # Algo Trade Project in Python
-Write by Lucas Thu Ping One (thupingonelucas@gmail.com)
+Written by Lucas Thu Ping One (thupingonelucas@gmail.com)
 
 ## 📌 Project Overview
 This project aims to develop an automated trading algorithm based on a momentum strategy. The goal is to identify trading opportunities by leveraging market trends and price volatility.
